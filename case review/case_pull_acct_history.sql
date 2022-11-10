@@ -331,7 +331,7 @@ UNION ALL
 
 /*app view activity*/
 select
-user_id,
+try_to_number(user_id) as user_id,
 convert_timezone('America/Los_Angeles',original_timestamp)::timestamp as timestamp,
 context_device_id::varchar as id,
 'n/a' as merchant_name,
@@ -346,9 +346,9 @@ concat(concat('app location: ',location),' ',concat('; label: ',label),' ',conca
 'n/a' as is_disputed
 from segment.chime_prod.menu_button_tapped
 where 1=1
-and (unique_id ilike '%account%' or  unique_id ilike '%card%')
+and (unique_id ilike '%%account%%' or  unique_id ilike '%%card%%')
 and location<>'Dialogue'
-and user_id IN (select * from user_info)
+and try_to_number(user_id) IN (5937972,25121212,37308273,5682101,10629890,42379127,3835714,8818083,39442942,20822350)
 
 union all
 
