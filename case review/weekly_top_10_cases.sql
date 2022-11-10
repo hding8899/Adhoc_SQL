@@ -24,7 +24,7 @@ qualify row_number() over (partition by dt.UNIQUE_TRANSACTION_ID order by dt.DIS
 )as dt
 
 left join fivetran.inspector_public.transactions t on dt.r_inspector_dispute_id = t.dispute_id
-and to_number(concat(dt.transaction_id, dt.authorization_code)) = to_number(t.transaction_ext_id)
+and concat(dt.transaction_id, dt.authorization_code) = t.transaction_ext_id
 
 where 1=1
 and coalesce(t.investigation_resolution,dt.resolution_decision) in ('approve','Approved')
