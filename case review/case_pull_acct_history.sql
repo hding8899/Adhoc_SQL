@@ -12,10 +12,10 @@ log:
 
 with user_info as
 /*define target user*/
-(select distinct to_char(id) as user_id from CHIME.FINANCE.members where id=15293692)
+(select distinct to_char(id) as user_id from CHIME.FINANCE.members where id=33118244)
 
 
-/*pulling FTP txn: settled txn transfer deposite credit_adj etc*/
+/*pulling FTP txn: transfer deposite credit_adj etc*/
 select
 t.user_id,
 convert_timezone('America/Los_Angeles',t.transaction_timestamp) as timestamp,
