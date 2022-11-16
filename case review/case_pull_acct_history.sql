@@ -98,8 +98,8 @@ case when rta.response_cd IN ('00','10') then 'n/a' else concat(rta.response_cd,
                                                                              else rta.response_cd end ) ::varchar end as decline_resp_cd,
 rta.risk_score::varchar as vrs,
 case when rta.RESPONSE_CD in ('59') then
-    concat(coalesce(rules_denied,rta2.policy_name),' ',(case when coalesce(oo.body,o.body) ilike '%%YES%%' or coalesce(oo.body,o.body) = 'Y' or coalesce(oo.body,o.body) = 'y' then 'No fraud'
-                                                when coalesce(oo.body,o.body) ilike '%%NO%%' or coalesce(oo.body,o.body) = 'N' or coalesce(oo.body,o.body) = 'n' then 'Yes fraud'
+    concat(coalesce(rules_denied,rta2.policy_name),' ',(case when coalesce(oo.body,o.body) ilike '%YES%' or coalesce(oo.body,o.body) = 'Y' or coalesce(oo.body,o.body) = 'y' then 'No fraud'
+                                                when coalesce(oo.body,o.body) ilike '%NO%' or coalesce(oo.body,o.body) = 'N' or coalesce(oo.body,o.body) = 'n' then 'Yes fraud'
                                                 when coalesce(oo.body,o.body) is not null then 'Unformatted Response'
                                                 when coalesce(oo.body,o.body) IS NULL then 'Did Not Respond'
                                                     end ),' ',(case when coalesce(oo.timestamp,o.timestamp) is not null then coalesce(oo.timestamp,o.timestamp)::varchar else '' end))
@@ -130,7 +130,7 @@ where 1=1
 and rta.original_auth_id=0 
 -- and mcc_cd not in (6011,6010) -- ATM txns
 and rta.final_amt>=0 -- removes refunds since they are not technically card purhcases
-and rta.user_id IN (5937972,25121212,37308273,5682101,10629890,42379127,3835714,8818083,39442942,20822350)
+and rta.user_id IN (select * from user_info)
 qualify row_number() over(partition by rta.auth_event_id order by o.original_timestamp desc,oo.timestamp desc, 
                           decode(rta2.policy_result, 
                                  'sanction_block', 0, 
@@ -346,9 +346,9 @@ concat(concat('app location: ',location),' ',concat('; label: ',label),' ',conca
 'n/a' as is_disputed
 from segment.chime_prod.menu_button_tapped
 where 1=1
-and (unique_id ilike '%%account%%' or  unique_id ilike '%%card%%')
+and (unique_id ilike '%account%' or  unique_id ilike '%card%')
 and location<>'Dialogue'
-and try_to_number(user_id) IN (5937972,25121212,37308273,5682101,10629890,42379127,3835714,8818083,39442942,20822350)
+and try_to_number(user_id) IN (select * from user_info)
 
 union all
 
