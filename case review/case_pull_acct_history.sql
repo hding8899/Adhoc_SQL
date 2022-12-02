@@ -80,69 +80,49 @@ case when rta.MCC_CD in ('6010','6011') then 'Withdrawal'
 concat('Card Transaction ',rta.entry_type, '; MCC_CD: ', rta.mcc_cd) as description, /*EMV, magnetic, contactless etc.*/
 dc.CARD_TYPE||' '||right(rta.PAN,4) as card_type,
 case when rta.response_cd IN ('00','10') then 'Approved' else 'Declined' end as decision,
-case when rta.response_cd IN ('00','10') then 'n/a' else concat(rta.response_cd,' ', case when rta.response_cd='51' then 'NSF'
-                                                                             when rta.response_cd='04' then 'Inactive Card'
-                                                                             when rta.response_cd='05' then 'Do Not Honor'
-                                                                             when rta.response_cd='30' then 'Format Error'
-                                                                             when rta.response_cd='41' then 'Lost/Stolen'
-                                                                             when rta.response_cd='43' then 'Lost/Stolen'
-                                                                             when rta.response_cd='54' then 'Mismatched Expry'
-                                                                             when rta.response_cd='55' then 'Incorrect PIN'
-                                                                             when rta.response_cd='57' then 'Card Disabled'
-                                                                             when rta.response_cd='59' then 'DFE'
-                                                                             when rta.response_cd='61' then 'Exceeds Limit'
-                                                                             when rta.response_cd='75' then 'PIN Tries Exceeded'
-                                                                             when rta.response_cd='N7' then 'Incorrect CVV'
-                                                                             when rta.response_cd='01' then 'Processor Error'
-                                                                             when rta.response_cd='85' then 'Address validation authorization'
-                                                                             else rta.response_cd end ) ::varchar end as decline_resp_cd,
+case when rta.response_cd IN ('00','10') then 'n/a' else concat(rta.response_cd,' '
+                                                                , case when rta.response_cd='51' then 'NSF'
+                                                                       when rta.response_cd='04' then 'Inactive Card'
+                                                                       when rta.response_cd='05' then 'Do Not Honor'
+                                                                       when rta.response_cd='30' then 'Format Error'
+                                                                       when rta.response_cd='41' then 'Lost/Stolen'
+                                                                       when rta.response_cd='43' then 'Lost/Stolen'
+                                                                       when rta.response_cd='54' then 'Mismatched Expry'
+                                                                       when rta.response_cd='55' then 'Incorrect PIN'
+                                                                       when rta.response_cd='57' then 'Card Disabled'
+                                                                       when rta.response_cd='59' then 'DFE'
+                                                                       when rta.response_cd='61' then 'Exceeds Limit'
+                                                                       when rta.response_cd='75' then 'PIN Tries Exceeded'
+                                                                       when rta.response_cd='N7' then 'Incorrect CVV'
+                                                                       when rta.response_cd='01' then 'Processor Error'
+                                                                       when rta.response_cd='85' then 'Address validation authorization'
+                                                                       else rta.response_cd end ) ::varchar end as decline_resp_cd,
 rta.risk_score::varchar as vrs,
-case when rta.RESPONSE_CD in ('59') then
-    concat(coalesce(rules_denied,rta2.policy_name),' ',(case when coalesce(oo.body,o.body) ilike '%YES%' or coalesce(oo.body,o.body) = 'Y' or coalesce(oo.body,o.body) = 'y' then 'No fraud'
-                                                when coalesce(oo.body,o.body) ilike '%NO%' or coalesce(oo.body,o.body) = 'N' or coalesce(oo.body,o.body) = 'n' then 'Yes fraud'
-                                                when coalesce(oo.body,o.body) is not null then 'Unformatted Response'
-                                                when coalesce(oo.body,o.body) IS NULL then 'Did Not Respond'
-                                                    end ),' ',(case when coalesce(oo.timestamp,o.timestamp) is not null then coalesce(oo.timestamp,o.timestamp)::varchar else '' end))
-else 'n/a'
-    end as rules_denied,
+case when rta.response_cd in ('59') then rta2.policy_name||' -'||(case when o.is_suppressed=true then 'suppressed'
+                                                                       when o.response_signal is null then 'no response'
+                                                                  else o.response_signal end)
+     when rta.response_cd in ('00','10') then rta2.policy_name||' -'||rta2.decision_outcome
+     else 'n/a' end as rules_denied,
 rta.req_amt as amt,
 case when d.authorization_code is not null then 'yes' else 'no' end as is_disputed
--- ,MCC_CD
+
 from edw_db.core.fct_realtime_auth_event rta
-left join EDW_DB.CORE.DIM_CARD as dc
-on rta.USER_ID=dc.USER_ID  and right(rta.PAN,4)=right(dc.CARD_NUMBER,4)
-left join edw_db.core.fct_realtime_auth_event dual_auth_settlment 
-  on rta.auth_id=dual_auth_settlment.original_auth_id
-  and rta.user_id=dual_auth_settlment.user_id 
-left join segment.chime_prod.rules_denied r /*2018 - 2022.05.25*/
-  on rta.auth_event_id=r.realtime_auth_event 
-left join segment.chime_prod.member_overrides o 
-  on (rta.user_id=o.user_id and rta.auth_id=o.AUTH_ID)
-  and o.timestamp::date>='2022-06-15'
-left join segment.chime_prod.member_overrides oo
-on rta.user_id=oo.user_id and rta.auth_event_id=oo.realtime_auth_id 
-and oo.timestamp::date<'2022-6-15'
-left join risk.prod.disputed_transactions d
-  on (d.authorization_code=rta.auth_id or d.authorization_code=dual_auth_settlment.auth_id)
-  and d.user_id=rta.user_id
-left join chime.decision_platform.real_time_auth rta2 on (rta.user_id=rta2.user_id and rta.auth_id=rta2.auth_id and rta2.is_shadow_mode='false' and policy_result='criteria_met' and decision_outcome in ('hard_block','merchant_block','deny','prompt_override','sanction_block')) /*2021.11.10 - present*/
+left join EDW_DB.CORE.DIM_CARD as dc on rta.USER_ID=dc.USER_ID  and right(rta.PAN,4)=right(dc.CARD_NUMBER,4)
+left join edw_db.core.fct_realtime_auth_event dual_auth_settlment on rta.auth_id=dual_auth_settlment.original_auth_id and rta.user_id=dual_auth_settlment.user_id 
+left join risk.prod.disputed_transactions d on (d.authorization_code=rta.auth_id or d.authorization_code=dual_auth_settlment.auth_id) and d.user_id=rta.user_id
+left join chime.decision_platform.real_time_auth rta2 on 
+    (rta.user_id=rta2.user_id and rta.auth_id=rta2.auth_id and rta2.is_shadow_mode='false' and policy_result='criteria_met' and policy_actions like '%'||decision_outcome||'%' and decision_outcome in ('hard_block','merchant_block','deny','prompt_override','sanction_block','allow')) /*2021.11.10 - present*/
+left join chime.decision_platform.fraud_override_service o on (rta.user_id=o.user_id and rta.auth_id=o.realtime_auth_id)
+
 where 1=1
 and rta.original_auth_id=0 
--- and mcc_cd not in (6011,6010) -- ATM txns
-and rta.final_amt>=0 -- removes refunds since they are not technically card purhcases
+and rta.final_amt>=0
 and rta.user_id IN (select * from user_info)
-qualify row_number() over(partition by rta.auth_event_id order by o.original_timestamp desc,oo.timestamp desc, 
-                          decode(rta2.policy_result, 
-                                 'sanction_block', 0, 
-                                 'merchant_block', 1, 
-                                 'hard_block', 2, 
-                                 'deny',3,
-                                 'prompt_override',4,
-                                 999
-                                ) ) = 1
+qualify row_number() over(partition by rta.auth_event_id order by o.response_received_at) = 1
 
 
 UNION ALL
+
 
 /*pull false posted txn*/
 select events.user_id,
