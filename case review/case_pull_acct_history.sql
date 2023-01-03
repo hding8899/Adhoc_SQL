@@ -1,15 +1,3 @@
-
-/*
-log:
-2022.09:
- - added dispute claim id for agent review
- - swapped table for login from segment.chime_prod.login_success to edw_db.feature_store.atom_user_sessions_v2
- - leveraged chime.decision_platform.real_time_auth for declined rule name
- - added prism model score for psp txn by joining pay_frauds tbl with prism_alert_v2 by id
- - added mcc_cd in description
-*/
-
-
 with user_info as
 /*define target user*/
 (select distinct to_char(id) as user_id from CHIME.FINANCE.members where id=33118244)
@@ -61,7 +49,7 @@ left join (select pay_friend_id, score from ml.model_inference.prism_alerts_v2) 
 where 1=1
 and description NOT IN ('Savings Round-Up Transfer','Savings Round-Up Transfer from Checking','API Cardholder Balance Adjustments','Savings Round-Up Transfer Bonus',
 'International Cash Withdrawal Fee', 'Domestic Cash Withdrawal Fee - ATM','Savings Interest', 'Payment from the Secured Credit Funding Account to the Secured Credit Card')
-and type<>'Purchase' /*non txn only: fee deposit transfer etc*/
+and type<>'Purchase' /*non purchase only: fee deposit transfer credit adj etc*/
 and MCC_CD not in ('6010','6011') /*Financial Institutions – Manual/auto Cash Disbursements*/
 and t.user_id IN (select * from user_info)
 
@@ -218,14 +206,21 @@ and user_id IN (select * from user_info)
 
 UNION ALL
 
-/*pull all logins*/
+/*pull all logins success:
+  If indicated in description column:
+    SMS 2FA Auth - passed 2fa auth
+    Scan ID Auth - passed scan ID
+    Step Down - passed password(and arkose) 
+  
+*/
  select 
     ls.user_id,
     convert_timezone('America/Los_Angeles',ls.session_timestamp) as timestamp,
     ls.device_id::varchar as id,
     'n/a' as merchant_name,
     'login' as type,
-    concat(COALESCE(concat('ATOMv2 score:',atomv2.score),''),'  ',COALESCE(concat('DEVICE:',ls.device_model),''),'  ',coalesce(concat('LOCALE:',ls.locale),''),'  ',coalesce(concat('TZ:',ls.timezone),''),'  ',coalesce(concat('CARRIER:',ls.network_carrier),''),'  ',coalesce(concat('IP:',ls.ip,' ',loc.time_zone),''),' ',COALESCE(concat('Platform:',ls.platform),''),' ',COALESCE(concat('ScanID_Req_result:',lr.scanid_required,'|',lr.scanid_success),'')) as description,
+     concat(COALESCE(concat('ATOMv2 score:',atomv2.score),''),'  ',COALESCE(concat('DEVICE:',ls.device_model),''),'  ',coalesce(concat('LOCALE:',ls.locale),''),'  ',coalesce(concat('TZ:',ls.timezone),''),'',coalesce(concat('CARRIER:',ls.network_carrier),''),'  ',coalesce(concat('IP:',ls.ip,' ',loc.time_zone),''),' ',COALESCE(concat('Platform:',ls.platform),''),' '
+   ,coalesce(concat('TFA_METHOD:',lr.tfa_method_deprecated),''),' ', coalesce('TIME_SPENT:'||cast(datediff(second,login_started_at,login_success_at) as varchar),'')) as description,
     'n/a' as card_type,
     'n/a' as decision,
     'n/a' as decline_resp_cd,
@@ -243,35 +238,27 @@ UNION ALL
    
    qualify row_number() over (partition by ls.session_timestamp, ls.device_id order by lr.login_success_at desc)=1 
 
-    -- older version
--- select
--- session.user_id,
--- convert_timezone('America/Los_Angeles',first_seen)::timestamp as timestamp,
--- session.device_id::varchar as id,
--- 'n/a' as merchant_name,
--- case when event_log ilike '%card shown%' then concat('device event:','view_card')
---     when event_log ilike '%login.failed%' then concat('device event:','login_failed')
---     else concat('device event:','other') end as type,
--- concat(COALESCE(concat('ATOMv2 score:',score),''),'  ',COALESCE(concat('DEVICE:',device_model),''),'  ',coalesce(concat('LOCALE:',locale),''),'  ',coalesce(concat('TZ:',timezone),''),'  ',coalesce(concat('CARRIER:',network_carrier),''),'  ',coalesce(concat('IP:',session.ip,' ',loc.time_zone),'')) as description,
--- 'n/a' as card_type,
--- 'n/a' as decision,
--- 'n/a' as decline_resp_cd,
--- 'n/a' as vrs,
--- 'n/a' rules_denied,
--- 0 as amt,
--- 'n/a' as is_disputed
--- from analytics.looker.device_sessions session
--- left join partner_db.maxmind.ip_geolocation_mapping as map
---   on session.ip=map.ip
--- left join partner_db.maxmind.GEOIP2_CITY_LOCATIONS_EN loc
---   on loc.geoname_id = map.geoname_id
--- left join  (select distinct user_id,score,device_id
---             from ml.model_inference.ato_login_alerts
---             where score<>0) atomv2
---   on session.user_id=atomv2.user_id
---   and session.device_id=atomv2.device_id
--- where session.device_id is not null
--- and session.user_id IN (select * from user_info)
+UNION ALL
+
+/*Failed logins*/
+select user_id,
+       convert_timezone('America/Los_Angeles',login_started_at)::timestamp as timestamp,
+       segment_device_id as id,
+       'n/a' as merchant_name,
+       'login failed' as type,
+       'FALIED RSN: '||tfa_method_deprecated||'; PLATFORM: '||platform as description,
+       'n/a' as card_type,
+       'n/a' as decision,
+       'n/a' as declined_resp_cd,
+       'n/a' as vrs,
+       'n/a' as rule_denied,
+        0 as amt,
+       'n/a' as is_disputed    
+    from analytics.test.login_requests
+    where 1=1
+    and user_id IN (select * from user_info)
+    and tfa_method is not null /*exclude pre login fail*/
+    and login_success=0 and mfa_auth_success=0 /*exclude data issue casued fail*/
 
 UNION ALL
 
