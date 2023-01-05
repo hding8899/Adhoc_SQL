@@ -86,7 +86,8 @@ case when rta.response_cd IN ('00','10') then 'n/a' else concat(rta.response_cd,
                                                                        when rta.response_cd='85' then 'Address validation authorization'
                                                                        else rta.response_cd end ) ::varchar end as decline_resp_cd,
 rta.risk_score::varchar as vrs,
-case when rta.response_cd in ('59') then rta2.policy_name||' -'||(case when o.is_suppressed=true then 'suppressed'
+case when rta.response_cd in ('59') then rta2.policy_name||' -'||(case when o.decision_id is null then rta2.decision_outcome
+                                                                       when o.is_suppressed=true then 'suppressed'
                                                                        when o.response_signal is null then 'no response'
                                                                   else o.response_signal end)
      when rta.response_cd in ('00','10') then rta2.policy_name||' -'||rta2.decision_outcome
@@ -220,7 +221,7 @@ UNION ALL
     'n/a' as merchant_name,
     'login' as type,
      concat(COALESCE(concat('ATOMv2 score:',atomv2.score),''),'  ',COALESCE(concat('DEVICE:',ls.device_model),''),'  ',coalesce(concat('LOCALE:',ls.locale),''),'  ',coalesce(concat('TZ:',ls.timezone),''),'',coalesce(concat('CARRIER:',ls.network_carrier),''),'  ',coalesce(concat('IP:',ls.ip,' ',loc.time_zone),''),' ',COALESCE(concat('Platform:',ls.platform),''),' '
-   ,coalesce(concat('TFA_METHOD:',lr.tfa_method_deprecated),''),' ', coalesce('TIME_SPENT:'||cast(datediff(second,login_started_at,login_success_at) as varchar),'')) as description,
+    ,coalesce(concat('TFA_METHOD:',lr.tfa_method_deprecated),''),' ', coalesce('TIME_SPENT:'||cast(datediff(second,login_started_at,login_success_at) as varchar),'')) as description,
     'n/a' as card_type,
     'n/a' as decision,
     'n/a' as decline_resp_cd,
